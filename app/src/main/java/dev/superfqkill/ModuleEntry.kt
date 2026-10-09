@@ -1,6 +1,10 @@
 package dev.superfqkill
 
+import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import dev.superfqkill.core.ApkVersion
 import dev.superfqkill.core.ClassResolver
 import dev.superfqkill.core.HookManager
@@ -245,12 +249,76 @@ class ModuleEntry : XposedModule {
                 }
             }
 
-            log.info(hooks.summary())
+            val summaryLine = hooks.summary()
+            log.info(summaryLine)
             // 结构化摘要目前只在进程内可用。送到模块 App 的 UI 需要 host→module 的 IPC,
             // 那是个未解问题(getRemotePreferences 方向相反;/data/local/tmp 被 SELinux 挡死;
             // ContentProvider.call 在 API 30+ 需要宿主对模块有 package visibility —— 夸克能用
             // 可能只因它自带 QUERY_ALL_PACKAGES,番茄/红果未必有)。必须实机验证,见 PLAN.md §6.3。
             log.debug("install summary detail: ${hooks.installSummary}")
+
+            // 装机时的可见确认。Toast 是这个 IPC 缺口的临时替代:与其去模块 App 里翻状态卡,
+            // 不如直接在宿主里看到一行结果。详见 showHookToast 的注释(含为什么必须延迟)。
+            showHookToast(target, summaryLine, via)
+        }
+    }
+
+    /**
+     * 在宿主界面上弹一条 Toast,确认 hook 已装完并给出摘要。
+     *
+     * ## 为什么必须延迟
+     *
+     * 本方法在 [onPackageReady] 的调用链里被触发,而**那时宿主的 Application 还没创建** ——
+     * 上游 FanqieHook 实测过(OnePlus 9R / Android 14 / LSPosed 2.2.0):
+     * `ActivityThread.currentApplication()` 返回 null,`PackageManager.getPackageArchiveInfo`
+     * 抛 NPE。那正是它要手写一个二进制 AXML 解析器([ApkVersion])来读 versionCode 的原因。
+     *
+     * 没有 Context 就没有 Toast。所以把动作 post 到主线程队列并额外延迟 [TOAST_DELAY_MS]:
+     * 等宿主 UI 起来之后再取 Context。取不到就只记 WARN,不影响任何 hook。
+     *
+     * ## 已知限制
+     *
+     *  · **Android 11+ 限制后台自定义 Toast**,但纯文本 Toast 在宿主有可见 Activity 时不受影响;
+     *    延迟正是为了让它落在这个窗口里。仍可能因宿主启动慢而取不到 Context —— 调大延迟即可。
+     *  · 这条 Toast **只证明"安装流程跑完了"**,不证明任何一条 hook 真的在调用链上。
+     *    后者只有 `hook hit[...]` 日志能证明(见 DEVICE-TEST.md §6.5)。
+     *    上游 squemaFQH 的 README.md:74 曾声称首启会弹 `番茄红果 VIP Hook 成功`,
+     *    而它仓库唯一的 commit `3f8e69a` 就把所有 Toast 删了 —— 那条文档成了 17 处失实之一。
+     *    我们把它加回来,但措辞上只声称"装完了",不声称"生效了"。
+     */
+    private fun showHookToast(target: InstallTarget, summaryLine: String, via: String) {
+        if (!SHOW_HOOK_TOAST) return
+        try {
+            Handler(Looper.getMainLooper()).postDelayed({
+                val ctx = runCatching {
+                    Class.forName("android.app.ActivityThread")
+                        .getMethod("currentApplication")
+                        .invoke(null) as? Context
+                }.getOrNull()
+                if (ctx == null) {
+                    log.warn(
+                        "hook toast 跳过:延迟 ${TOAST_DELAY_MS}ms 后仍取不到宿主 Context " +
+                            "(ActivityThread.currentApplication() == null)。hook 本身不受影响。"
+                    )
+                    return@postDelayed
+                }
+                // summaryLine 形如 "hooks installed=36 skipped=1 known-missing=[…]",
+                // 太长会被 Toast 截断,所以只取前两个计数,完整内容看日志。
+                val counts = summaryLine.substringAfter("hooks ", summaryLine)
+                    .substringBefore(" lost=").substringBefore(" known-missing=")
+                    .substringBefore(" failed=").substringBefore(" hook-failed=")
+                val name = if (target.packageName == PKG_HONGGUO) "红果" else "番茄"
+                val text = "番茄红果增强:$name hook 完成($counts)"
+                runCatching {
+                    Toast.makeText(ctx.applicationContext, text, Toast.LENGTH_LONG).show()
+                    log.info("hook toast shown: $text [via=$via]")
+                }.onFailure {
+                    log.warn("hook toast 显示失败(${it.javaClass.simpleName}: ${it.message})")
+                }
+            }, TOAST_DELAY_MS)
+        } catch (t: Throwable) {
+            // Toast 纯属附加体验,任何失败都不能影响 hook 安装。
+            log.warn("hook toast 调度失败(${t.javaClass.simpleName}: ${t.message})")
         }
     }
 
@@ -433,5 +501,24 @@ class ModuleEntry : XposedModule {
          * 万一后面的 pack 出问题,广告拦截仍然成立。
          */
         val PACKS: List<FeaturePack> = listOf(AdPack(), PurifyPack())
+
+        // ── 装机提示 ──────────────────────────────────────────────────────────
+        /**
+         * hook 装完后是否在宿主界面弹一条 Toast。改这里就能开关,不用动别的代码。
+         *
+         * 它的定位是**装机时的可见确认**,尤其是第一次上真机、还没接上 adb 的时候。
+         * ⚠️ 它只证明"安装流程跑完了",**不证明任何一条 hook 真的在调用链上** ——
+         * 后者只有 `hook hit[...]` 日志能证明(DEVICE-TEST.md §6.5)。
+         */
+        const val SHOW_HOOK_TOAST: Boolean = true
+
+        /**
+         * Toast 的延迟(毫秒)。必须等宿主的 Application 与 UI 起来之后才能取到 Context,
+         * 原因见 [showHookToast] 的注释。
+         *
+         * 若日志里出现 `hook toast 跳过:延迟 …ms 后仍取不到宿主 Context`,说明宿主启动比
+         * 这个延迟还慢(冷启动 + DexKit 全 dex 扫描会占用启动路径),把它调大即可。
+         */
+        const val TOAST_DELAY_MS: Long = 4000L
     }
 }

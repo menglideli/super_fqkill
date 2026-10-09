@@ -114,6 +114,41 @@ adb shell su -c 'cat /data/data/com.phoenix.read/cache/superfqkill.log'
 
 **这一行里有每条 hook 的 `hits` 计数**,是在没有 UI 详情页的情况下唯一的逐条命中数据。
 
+### 3.4 装机 Toast(可见确认)
+
+hook 装完后约 4 秒,宿主界面上会弹一条:
+
+```
+番茄红果增强:番茄 hook 完成(installed=36 skipped=1)
+```
+
+对应日志:
+
+```
+[INFO] hook toast shown: 番茄红果增强:番茄 hook 完成(installed=36 skipped=1) [via=packageReady]
+```
+
+**开关与延迟**都在 `ModuleEntry.kt` 的 companion object 里,改一个常量重新构建即可:
+
+| 常量 | 默认 | 说明 |
+|---|---|---|
+| `SHOW_HOOK_TOAST` | `true` | 关掉整条 Toast |
+| `TOAST_DELAY_MS` | `4000` | 延迟毫秒数 |
+
+**为什么必须延迟:** `onPackageReady` 时宿主的 Application **还没创建** —— 上游实测过 `ActivityThread.currentApplication()` 在那个阶段返回 null(这正是 `ApkVersion` 那个手写 AXML 解析器存在的原因)。没有 Context 就没有 Toast,所以 post 到主线程并延迟,等宿主 UI 起来再取。
+
+若日志出现:
+
+```
+[WARN] hook toast 跳过:延迟 4000ms 后仍取不到宿主 Context (ActivityThread.currentApplication() == null)。hook 本身不受影响。
+```
+
+说明宿主冷启动比 4 秒还慢(DexKit 全 dex 扫描占用启动路径),把 `TOAST_DELAY_MS` 调大即可。**这条 WARN 不代表 hook 失败** —— Toast 的调度全程 try/catch,任何失败都不影响安装。
+
+> ⚠️ **Toast 只证明"安装流程跑完了",不证明任何一条 hook 真的在调用链上。** 后者只有 §3.2 的 `hook hit[...]` 能证明。
+>
+> 上游 squemaFQH 的 README.md:74 曾声称首启会弹 `番茄红果 VIP Hook 成功`,但它仓库唯一的 commit `3f8e69a`("chore: drop all automatic Toast notifications from hook entries")就把所有 Toast 删了,文档没跟着改 —— 那是它 17 处文档失实之一。我们把提示加回来,但措辞上只声称"装完了"。
+
 ---
 
 ## 4. 验收基线

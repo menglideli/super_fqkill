@@ -22,7 +22,14 @@ APK="${1:?用法: $0 <apk> <variant>}"
 VARIANT="${2:-unknown}"
 
 # 可按需调整的阈值
-MAX_APK_KB="${MAX_APK_KB:-1536}"          # 体积预算。基线:FanqieHook 0.47 MB
+# 体积预算,**按变体区分**。
+# release: 单 ABI(arm64-v8a)+ R8 收缩 → 实测 673 KB。基线参照 FanqieHook 0.47 MB。
+# debug:   **两个** ABI(arm64-v8a + x86_64,后者供 CI 的 x86_64 模拟器跑 instrumented 测试)
+#          且 minify 关闭,Kotlin stdlib 不被裁剪 → 实测 2105 KB。
+# 用同一个预算卡 debug 是误报:两份 libdexkit.so 各 ~395 KB,加上未收缩的 stdlib,
+# 2 MB 是**预期**结果,不是 abiFilters 或 minify 配错了。
+MAX_APK_KB_RELEASE="${MAX_APK_KB_RELEASE:-1536}"
+MAX_APK_KB_DEBUG="${MAX_APK_KB_DEBUG:-4096}"
 REQUIRED_SCOPE="com.dragon.read com.phoenix.read"
 BUILD_GRADLE="app/build.gradle.kts"
 
@@ -63,9 +70,20 @@ ok "APK 存在"
 # ── 1. 体积 ────────────────────────────────────────────────────
 hdr "1. 体积预算"
 SIZE_KB=$(( $(stat -c%s "$APK" 2>/dev/null || stat -f%z "$APK") / 1024 ))
-echo "       实际 ${SIZE_KB} KB / 预算 ${MAX_APK_KB} KB"
-if [ "$SIZE_KB" -le "$MAX_APK_KB" ]; then ok "体积在预算内"
-else bad "体积超预算 —— 检查 abiFilters 是否只有 arm64-v8a、minifyEnabled 是否开启"; fi
+case "$VARIANT" in
+  release) BUDGET="$MAX_APK_KB_RELEASE" ;;
+  debug)   BUDGET="$MAX_APK_KB_DEBUG" ;;
+  *)       BUDGET="$MAX_APK_KB_RELEASE" ;;
+esac
+echo "       实际 ${SIZE_KB} KB / 预算 ${BUDGET} KB (variant=$VARIANT)"
+if [ "$SIZE_KB" -le "$BUDGET" ]; then
+  ok "体积在预算内"
+else
+  case "$VARIANT" in
+    release) bad "体积超预算 —— 检查 abiFilters 是否只有 arm64-v8a、minifyEnabled 是否开启" ;;
+    *)       bad "体积超预算 —— debug 允许两个 ABI 且不开 R8,超出 ${BUDGET} KB 说明有异常依赖被打进来了" ;;
+  esac
+fi
 
 # ── 2. Xposed 元数据文件存在 ───────────────────────────────────
 hdr "2. META-INF/xposed/ 三件套"
