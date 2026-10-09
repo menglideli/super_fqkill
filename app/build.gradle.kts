@@ -1,18 +1,38 @@
 plugins {
+    // ★ AGP 9 内置 Kotlin 支持:`com.android.application` 自带 Kotlin 编译能力。
+    // **不要再 apply `org.jetbrains.kotlin.android`** —— AGP 9 会自动注册名为 `kotlin` 的
+    // extension,重复 apply 会撞车:
+    //   IllegalArgumentException: Cannot add extension with name 'kotlin',
+    //   as there is an extension already registered with that name
+    // (这是 AGP 9 迁移最常见的坑;AGP 9 对 KGP 2.2.10 有运行时依赖,会自动拉进来。)
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 // 版本号必须与 src/main/resources/META-INF/xposed/module.prop 保持同步。
 // scripts/verify-module-apk.sh 的第 6 项会在 CI 里强制校验这个一致性(以及 update.json)。
 android {
     namespace = "dev.superfqkill"
-    compileSdk = 35
+
+    // ── compileSdk 37 + compileSdkMinor 0 ─────────────────────────────────────
+    // 37 是 libxposed:service 102.0.0 的 aar-metadata 强制下限(理由见根 build.gradle.kts)。
+    //
+    // ★ **必须同时写 compileSdkMinor = 0**。Google 从未发布过 `platforms;android-37` 这个包,
+    //   SDK 仓库里只有 `android-37.0` / `android-37.1` / `android-37.2`(次版本格式);
+    //   纯整数的 API level 只到 36。AGP 通过独立的 `compileSdkMinor` 属性去解析次版本包,
+    //   只写 `compileSdk = 37` 会报 `Failed to find Platform SDK platforms;android-37`
+    //   —— 这正是 squemaFQH README 陷阱 #4 描述的现象,而它把原因归给了"AGP 8.x 太老",
+    //   其实真正的原因是包名形态。已用 javap 核验 AGP 9.2.0 的 CommonExtension 确实声明了
+    //   getCompileSdkMinor()/setCompileSdkMinor(Integer)。
+    compileSdk = 37
+    compileSdkMinor = 0
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "dev.superfqkill"
         minSdk = 26
-        targetSdk = 35
+        // AGP 9 起 targetSdk 未设置时默认等于 compileSdk(旧行为是默认等于 minSdk)。
+        // 这里显式写出,不依赖默认值的变化。
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
 
@@ -79,7 +99,27 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+    // ── Kotlin 的 jvmTarget ───────────────────────────────────────────────────
+    // 原来的 `kotlinOptions { jvmTarget = "17" }` 已删除:AGP 9 起 `kotlinOptions` 被废弃,
+    // 内置 Kotlin 改用 `compilerOptions`(AGP 9 迁移矩阵明确列了这一条)。
+    //
+    // 这里**刻意不写**显式的 kotlin{} 块,而是让 AGP 的内置 Kotlin 跟随上面的 compileOptions。
+    // 原因:`kotlin` extension 是 AGP 内部注册的,不在本脚本的 plugins{} 块里,
+    // Kotlin DSL 的 type-safe accessor **可能不会为它生成** —— 那样脚本自身就编译不过,
+    // 而且这个行为我无法在没有 Android SDK 的机器上验证。少写一处赌注。
+    //
+    // 兜底:gradle.properties 里设了 `kotlin.jvm.target.validation.mode=warning`,
+    // 所以即便 Kotlin 与 Java 的 jvmTarget 不一致也只是警告而非构建失败
+    // (在 Android 上 jvmTarget 只影响交给 D8 的字节码版本,D8 两者都能处理)。
+    //
+    // 若 CI 仍报 jvmTarget 相关**错误**,把下面这段取消注释(它需要 KGP 的类在
+    // buildscript classpath 上,AGP 9 对 KGP 2.2.10 有运行时依赖,通常可满足):
+    //
+    // kotlin {
+    //     compilerOptions {
+    //         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    //     }
+    // }
 
     packaging {
         resources {

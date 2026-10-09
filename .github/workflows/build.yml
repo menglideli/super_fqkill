@@ -16,9 +16,13 @@ permissions:
   contents: read
 
 env:
-  # 与 app/build.gradle.kts 的 compileSdk 保持一致。改 SDK 版本时这两处要同步改。
-  COMPILE_SDK: '35'
-  BUILD_TOOLS: '35.0.0'
+  # SDK 包名。**注意不能写成 `platforms;android-37`** —— Google 从未发布过这个包,
+  # SDK 仓库里只有次版本形态 `android-37.0` / `android-37.1` / `android-37.2`
+  # (纯整数的 API level 只到 36)。写错的话 sdkmanager 会报
+  # `Failed to find Platform SDK platforms;android-37`。
+  # 与 app/build.gradle.kts 的 compileSdk=37 + compileSdkMinor=0 对应。
+  SDK_PLATFORM: 'platforms;android-37.0'
+  BUILD_TOOLS: '37.0.0'
 
 jobs:
   # ───────────────────────────────────────────────────────────────
@@ -60,7 +64,7 @@ jobs:
       # runner 镜像自带的 SDK 组件版本不可控(且 ARM64 larger runner 根本没装 SDK),
       # 所以显式装我们需要的,保证可复现。
       - name: Install SDK platform and build-tools
-        run: sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;${BUILD_TOOLS}"
+        run: sdkmanager "$SDK_PLATFORM" "build-tools;${BUILD_TOOLS}"
 
       # 用 cache-provider: basic(MIT,基于 actions/cache)。
       # 默认的 enhanced caching 属于专有组件 gradle-actions-caching,受 Gradle Terms of Use 约束
