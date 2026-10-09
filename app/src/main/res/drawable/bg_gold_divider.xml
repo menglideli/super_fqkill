@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 标题下的金色分隔线。移植自 squemaFQH 同名文件。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#40C9A84B" />
+    <corners android:radius="1dp" />
+</shape>

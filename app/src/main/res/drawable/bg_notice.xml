@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 「激励入口会失效」告知块的底:比卡片更亮的金边 + 更实的填充,让它在页面里跳出来。
+     这条告知刻意做得显眼 —— 它是本模块**唯一会削弱用户已有功能**的设计取舍
+     (零广告闸门连用户主动点的激励位一起关),藏起来等于让用户以为模块坏了。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="18dp" />
+    <solid android:color="@color/notice_fill" />
+    <stroke
+        android:width="1.2dp"
+        android:color="@color/notice_stroke" />
+</shape>

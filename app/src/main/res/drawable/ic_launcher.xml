@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自绘图标。刻意不复用 squemaFQH 的 ic_launcher.png(那是 GPL 资源,虽然本项目也是
+     GPL-3.0 可以用,但二进制资源无法审阅来源,自己画一个更干净)。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 底板 -->
+    <path
+        android:fillColor="#12141C"
+        android:pathData="M22,6 h64 a16,16 0 0 1 16,16 v64 a16,16 0 0 1 -16,16 h-64 a16,16 0 0 1 -16,-16 v-64 a16,16 0 0 1 16,-16 z" />
+
+    <!-- 书页(打开的书 = 阅读类 App) -->
+    <path
+        android:fillColor="#2A2F3E"
+        android:pathData="M54,38 L54,76 L30,70 L30,34 Z" />
+    <path
+        android:fillColor="#353B4D"
+        android:pathData="M54,38 L54,76 L78,70 L78,34 Z" />
+
+    <!-- 斜杠(禁止 = 去广告) -->
+    <path
+        android:fillColor="#E8B44C"
+        android:pathData="M28,80 L80,28 L86,34 L34,86 Z" />
+</vector>

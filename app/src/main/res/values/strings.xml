@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">番茄 红果 增强</string>
+
+    <!-- 由 AndroidManifest 的 android:description 引用。
+         Modern libxposed 模块从这里取描述,不用 meta-data。 -->
+    <string name="xposed_description">番茄小说与红果免费短剧的去广告与界面净化模块。零广告模式:通过宿主的中央广告闸门拦截全部广告位,宿主新增的位置同样自动拦截。附带界面净化:清空推荐用户、自定义昵称、隐藏个人页推广位。不触碰任何会员或权益数据。</string>
+
+    <!-- 状态卡片 -->
+    <string name="state_live">LIVE</string>
+    <string name="state_scope">SCOPE</string>
+    <string name="state_off">IDLE</string>
+    <string name="state_running">运行中</string>
+    <string name="state_scoped">已勾选</string>
+    <string name="state_not_scoped">未勾选</string>
+
+    <string name="detail_title">Hook 明细</string>
+    <string name="detail_col_id">Hook</string>
+    <string name="detail_col_state">状态</string>
+    <string name="detail_col_hits">命中</string>
+
+    <!-- ── 以下为界面新增(上面已有的条目一律不改名、不重复定义) ────────────── -->
+
+    <string name="brand_subtitle">番茄小说 · 红果免费短剧 —— 去广告与界面净化</string>
+
+    <!-- 两张状态卡片的标题。包名不写在这里,由代码从 packs/FeaturePack.kt 的
+         PKG_FANQIE / PKG_HONGGUO 常量取,免得界面显示的包名和实际门控的包名漂移。 -->
+    <string name="target_fanqie">番茄小说</string>
+    <string name="target_hongguo">红果免费短剧</string>
+
+    <!-- %1$s = versionName,%2$d = versionCode。显示已安装宿主的版本,是因为 install
+         summary 该对上哪条审计基线,完全取决于宿主版本(见 packs/FeaturePack.kt 的
+         AUDITED_VERSION_CODES)。 -->
+    <string name="host_version_installed">已安装 %1$s (%2$d)</string>
+    <string name="host_not_installed">未安装</string>
+    <!-- LIVE 时把 HookedTarget.state 附在状态后面(UP_TO_DATE / STALE / RELOADING / FAILED)。
+         STALE 意味着宿主升级过而模块还是旧代,FAILED 意味着框架报告注入失败 —— 这两个
+         都是"看着勾上了其实没生效"的直接证据。 -->
+    <string name="state_with_detail">%1$s · %2$s</string>
+
+    <!-- per-hook 明细目前只能从日志读:InstallSummary 算在宿主进程里,host→module 没有
+         可用 IPC(理由见 core/HookManager.kt 的 InstallSummary 注释)。%1$s = 日志 TAG。 -->
+    <string name="detail_logcat_cmd">adb logcat -s %1$s</string>
+    <!-- %1$s/%2$s/%3$s = detail_col_id / detail_col_state / detail_col_hits -->
+    <string name="detail_legend">日志里的 install summary detail 逐条列出:%1$s / %2$s / %3$s —— 装了哪条、什么结局、被真实调用过几次。命中数为 0 的那条,即使装上了也不在调用链上。</string>
+
+    <!-- 卡片内的取日志命令。%1$s = 日志 TAG,%2$s = 宿主包名,%3$s = 状态文件名。
+         三个值都来自代码常量(ModuleLog.MODULE_LOG_TAG / ModuleEntry 用的 STATUS_FILE_NAME),
+         不写死在这里,免得改了 TAG 或文件名之后 UI 给出的命令是错的。 -->
+    <string name="card_logcat_text">adb logcat -s %1$s\n找 install summary 那一行\n\nsu -c \'cat /data/data/%2$s/cache/%3$s\'</string>
+
+    <!-- 设计取舍告知。AdPack 的零广告闸门对宿主 checkAdAvailable 一律回"无广告",
+         于是用户**主动点**的激励入口也无广告可播。两个上游都在代码注释里披露了这件事
+         (AdPack 的 PRESERVED_POSITIONS 与 installPositionFilterOn 的中文注释),
+         这里搬到用户看得见的地方。 -->
+    <string name="reward_notice_title">注意:看广告换奖励的入口会一起失效</string>
+    <string name="reward_notice_body">本模块对宿主的中央广告闸门一律回答「无广告」,所以用户主动点的「看视频得金币 / 看视频免广告 / 看视频催更 / 看视频解锁章节」也会因为无广告可播而失效。这是设计取舍,不是故障。金币与会员权益由服务端校验,拦广告不会让任何奖励白得,也不会伪造会员态;想恢复这些入口,在 LSPosed 里对该宿主取消勾选本模块即可。</string>
+
+    <string name="hint_service_bound">状态以 LSPosed 的作用域为准:未勾选 = IDLE,已勾选 = SCOPE,勾选且宿主主进程正在运行 = LIVE。取消勾选后回到本页会立刻变灰。</string>
+    <string name="hint_no_service">读不到 LSPosed 服务(XposedService 未绑定),下面的状态只能显示 IDLE。请确认已在 LSPosed 里启用本模块并勾选目标,然后**强制停止本 App 再重新打开**。</string>
+</resources>

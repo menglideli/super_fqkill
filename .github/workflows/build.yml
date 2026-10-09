@@ -1,0 +1,191 @@
+name: build
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支的旧运行直接取消,省 Actions 分钟数
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # 与 app/build.gradle.kts 的 compileSdk 保持一致。改 SDK 版本时这两处要同步改。
+  COMPILE_SDK: '35'
+  BUILD_TOOLS: '35.0.0'
+
+jobs:
+  # ───────────────────────────────────────────────────────────────
+  # Tier 1 + 2:编译 + 模块契约静态校验(不需要设备,每次 push 都跑)
+  # ───────────────────────────────────────────────────────────────
+  build:
+    name: Build & verify module contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 供应链:校验 gradle-wrapper.jar 的 SHA-256 是否在 Gradle 官方已知良好清单内。
+      # 两个上游仓库都直接提交了 wrapper jar,这一步防的是被投毒的 wrapper。
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 装 cmdline-tools 22.0、接受 SDK 许可、装 platform-tools,
+      # 并把 apkanalyzer / sdkmanager / d8 / r8 加进 PATH。
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      # runner 镜像自带的 SDK 组件版本不可控(且 ARM64 larger runner 根本没装 SDK),
+      # 所以显式装我们需要的,保证可复现。
+      - name: Install SDK platform and build-tools
+        run: sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;${BUILD_TOOLS}"
+
+      # 用 cache-provider: basic(MIT,基于 actions/cache)。
+      # 默认的 enhanced caching 属于专有组件 gradle-actions-caching,受 Gradle Terms of Use 约束
+      # (公开仓库免费,私有仓库需接受条款)。本项目是 GPL-3.0,CI 里不引专有组件更干净。
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: 'basic'
+
+      # 签名:release 需要稳定签名(否则用户 adb install -r 覆盖安装会因签名不一致而失败)。
+      # 私有 fork / PR 拿不到 secrets 时这里什么都不做,build.gradle.kts 会回退到 debug 签名,
+      # verify 脚本第 9 项会给出 WARN 而不是 FAIL。
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -z "${KEYSTORE_B64:-}" ]; then
+            echo "未配置 KEYSTORE_B64 secret,release 将回退 debug 签名"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/keys/release.jks"
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/keys/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build debug and release
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          KEYSTORE_KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
+
+      # ── Tier 2:模块契约静态校验 ────────────────────────────────
+      # 这一步是重点。两个上游的多数"装了但完全没效果"事故都属于这一类静默失败:
+      #   · java_init.list 的 FQCN 写错 → 模块永不加载,无错误无日志(squemaFQH 陷阱 #11)
+      #   · R8 把入口类重命名 → 同上
+      #   · libdexkit.so 没打进 APK → UnsatisfiedLinkError(陷阱 #2)
+      #   · java_init.list 混入经典 IXposedHookLoadPackage → LSPosed Modern 模式静默失败整个模块(陷阱 #3/#12)
+      #   · scope.list 漏包 → Manager 里不显示该目标,无法勾选,hook 永不触发(陷阱 #14)
+      # 全部可以在 CI 里用 apkanalyzer 挡住,不需要设备。
+      - name: Verify release APK
+        run: ./scripts/verify-module-apk.sh app/build/outputs/apk/release/app-release.apk release
+
+      - name: Verify debug APK
+        run: ./scripts/verify-module-apk.sh app/build/outputs/apk/debug/app-debug.apk debug
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-apks
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Print APK sizes to job summary
+        run: |
+          {
+            echo '### APK sizes'
+            echo '| variant | size |'
+            echo '|---|---|'
+            for f in app/build/outputs/apk/*/*.apk; do
+              printf '| %s | %s |\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────────────────────────────────────────────
+  # Tier 3:instrumented 测试 —— 在模拟器里用 fixture dex 真跑 ClassResolver
+  # 这是唯一能在 CI 里验证"DexKit 语义查找是否真的命中"的办法,
+  # 不需要 LSPosed、不需要 root、不需要番茄 APK。
+  # 详见 CI-PLAN.md §4。
+  # ───────────────────────────────────────────────────────────────
+  resolver-test:
+    name: Resolver tests on emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # 模拟器很贵也很脆,先只在 main 和手动触发时跑;PR 阶段注释掉下面这行即可全跑
+    if: github.event_name != 'pull_request'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [34]
+        target: [google_apis]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: 'basic'
+
+      # 预下载系统镜像,避免 emulator-runner 在计时内下载
+      - name: Pre-download emulator packages
+        run: |
+          sdkmanager "platforms;android-${{ matrix.api-level }}" \
+                     "system-images;android-${{ matrix.api-level }};${{ matrix.target }};x86_64" \
+                     emulator
+
+      # GitHub-hosted Linux runner 需要显式放开 /dev/kvm 权限,否则模拟器只能走软件渲染(慢到超时)
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # 注意:测试变体必须带 x86_64 abi,否则 DexKit 的 native 库在 x86_64 模拟器上加载不了。
+      # release 仍然只打 arm64-v8a(宿主是 arm64-only)。见 CI-PLAN.md §4.3。
+      - name: Build instrumented tests
+        run: ./gradlew --no-daemon assembleDebugAndroidTest
+
+      - name: Run resolver tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          # userdebug 镜像可以 adb root;我们不需要 root,但 ramdisk 启动更稳
+          script: ./gradlew --no-daemon connectedDebugAndroidTest
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -noaudio -gpu swiftshader_indirect -camera-back none
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolver-test-results-api${{ matrix.api-level }}
+          path: app/build/reports/androidTests/
+          if-no-files-found: ignore

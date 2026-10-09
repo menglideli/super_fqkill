@@ -1,0 +1,44 @@
+# Gradle / Android build outputs
+.gradle/
+build/
+**/build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kotlin
+*.kotlin_module
+
+# Logs
+*.log
+
+# Test artifacts
+/app/release/
+/app/debug/
+
+# Backup / scratch
+*~
+*.bak
+*.swp
+
+# Editor
+.vscode/
+
+# LSPosed / phone dumps (one-off captures from /data/adb/lspd)
+LSPosed_*/
+lspd-*/
+scopes*.txt
+# Frida verification scripts (internal, not published)
+frida_verify.js
+frida_min.js

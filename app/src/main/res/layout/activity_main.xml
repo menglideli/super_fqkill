@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主界面。结构参考 squemaFQH 的 activity_main.xml,但**刻意简化**:
+     它的 FrameLayout + atmosphere_layer / glass_blur_layer / grain_layer / vignette_layer
+     四层氛围背景、RenderEffect 磨砂(API 31+ 才有)、以及卡片入场动画(ObjectAnimator
+     交错 380ms)全部去掉。理由:那些是纯装饰,却引入了 Build.VERSION 分支、RenderEffect
+     与动画时序三类真机上才会暴露的问题;v0.1 的界面只需要把「两个宿主各自什么状态」
+     讲清楚。视觉语言(黑底 + 金边玻璃卡片 + 胶囊状态灯)保留。
+
+     根布局显式设 android:background,不依赖主题的 windowBackground:清单里没声明主题
+     (见 values/styles.xml 的说明),万一 setTheme 没生效,这里也能保证不是白底白字。 -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_void"
+    android:fillViewport="true"
+    android:overScrollMode="never"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:id="@+id/content_column"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="36dp"
+        android:paddingBottom="32dp">
+
+        <TextView
+            android:id="@+id/brand_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.02"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:text="@string/app_name"
+            android:textColor="@color/text_primary"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/brand_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="sans-serif"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:text="@string/brand_subtitle"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
+        <View
+            android:layout_width="40dp"
+            android:layout_height="1dp"
+            android:layout_marginStart="24dp"
+            android:layout_marginTop="18dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_gold_divider"
+            android:importantForAccessibility="no" />
+
+        <include
+            android:id="@+id/card_fanqie"
+            layout="@layout/view_status_card" />
+
+        <include
+            android:id="@+id/card_hongguo"
+            layout="@layout/view_status_card" />
+
+        <!-- ── Hook 明细:告诉用户去哪儿看逐条结果 ─────────────────────────────
+             per-hook 的 InstallSummary 是在**宿主进程**里算出来的,而 host→module 方向
+             没有可用的 IPC(每种候选通道都需要真机验证权限与 SELinux,见
+             core/HookManager.kt 的 InstallSummary 注释与 PLAN.md §6.3)。所以这里不假装
+             能显示明细表,而是把日志入口交出去。 -->
+        <TextView
+            android:id="@+id/detail_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:fontFamily="sans-serif-medium"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:text="@string/detail_title"
+            android:textColor="@color/text_gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/detail_logcat"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="monospace"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:text="@string/detail_logcat_cmd"
+            android:textColor="@color/text_primary"
+            android:textIsSelectable="true"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/detail_legend"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="sans-serif"
+            android:lineSpacingExtra="3dp"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:textColor="@color/text_muted"
+            android:textSize="11sp" />
+
+        <!-- ── 设计取舍告知:用户主动的激励入口会失效 ─────────────────────────────
+             这一块必须显眼。零广告闸门(AdPack 对宿主的 checkAdAvailable 一律回
+             "无广告")会把用户主动点的「看视频得金币 / 免广告 / 催更 / 解锁章节」一起
+             关掉 —— 那是**设计如此**,不是坏了,但不写出来用户只会当成 bug 报。
+             两个上游都在代码注释里披露了这件事(AdPack 的 PRESERVED_POSITIONS 与
+             installPositionFilterOn 的中文注释),这里把它搬到用户看得见的地方。 -->
+        <LinearLayout
+            android:id="@+id/reward_notice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/bg_notice"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <TextView
+                android:id="@+id/reward_notice_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/reward_notice_title"
+                android:textColor="@color/gold_bright"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/reward_notice_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:fontFamily="sans-serif"
+                android:lineSpacingExtra="3dp"
+                android:text="@string/reward_notice_body"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/hint_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:fontFamily="sans-serif"
+            android:lineSpacingExtra="3dp"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:textColor="@color/text_muted"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,11 @@
+id=SuperFqKill
+name=番茄 红果 增强
+version=v0.1.0
+versionCode=1
+author=superfqkill
+description=番茄小说 (com.dragon.read) 与红果免费短剧 (com.phoenix.read) 的去广告与界面净化模块。以 FanqieHook 的语义定位引擎为基座:拦截阅读器 banner/视频/翻页信息流/章节断开/开屏/TopView/听书贴片/短剧暂停与横屏插入广告,并通过宿主的中央广告闸门 checkAdAvailable 实现「零广告」——宿主以后新增的广告位同样自动拦截。附带界面净化:清空推荐用户、自定义昵称、隐藏个人页推广位。权益与发奖由服务端校验,本模块不触碰任何会员/权益数据,也不会让金币或权益白得。个别规则在宿主升级后失效时只会跳过那一条并写进日志与状态面板,其余照常生效。
+minApiVersion=102
+targetApiVersion=102
+staticScope=true
+exceptionMode=protective
+autoHotReload=false

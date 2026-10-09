@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 包可见性:模块 App 侧需要能解析两个目标(用于状态面板显示"已安装/版本号")。
+         不影响 hook 本身 —— hook 由框架注入,不需要模块 App 能看见目标。
+         squemaFQH 只列了 5 个目标里的 3 个,这里列全。 -->
+    <queries>
+        <package android:name="com.dragon.read" />
+        <package android:name="com.phoenix.read" />
+    </queries>
+
+    <!-- 零权限。刻意不声明任何 uses-permission:
+         · 不需要 INTERNET(无网络功能)
+         · 不需要存储权限(日志写宿主 cacheDir,状态走 XposedService)
+         · 不需要 QUERY_ALL_PACKAGES(用 <queries> 精确声明即可)
+         squemaFQH 同样是零权限,这点它做对了。 -->
+
+    <application
+        android:name=".ui.ModuleApp"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:description="@string/xposed_description">
+
+        <!-- Modern API(libxposed)模块的描述来自 android:description 属性,
+             **不是** <meta-data android:name="xposeddescription">。
+             squemaFQH 的 README.md:83 / AGENTS.md:34 把它说成 "xposed_description meta-data",
+             那是文档失实(它实际用的就是 android:description,做法正确、描述错误)。
+             同理:模块身份来自 META-INF/xposed/module.prop,不需要 xposedmodule/xposedminversion
+             /xposedscope 这些经典 meta-data。 -->
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 刻意没有任何 <provider>:
+             squemaFQH 导出了 ServiceProvider 与 QuarkConfigProvider,两者都**没有
+             android:permission 保护**,且 QuarkConfigProvider.call() 看不到调用方包名检查
+             —— 设备上任何 App 都能翻它的开关。我们不继承这个攻击面。
+             LIVE 状态改用 XposedService.getScope() + getRunningTargets()(service 102.0.0),
+             纯 libxposed 原生,无 IPC、无 root、无 SELinux 问题。见 PLAN.md §6.3。 -->
+    </application>
+
+</manifest>

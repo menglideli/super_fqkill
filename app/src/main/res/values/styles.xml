@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- **为什么用代码 setTheme 而不是在清单里声明主题**
+     AndroidManifest.xml 是本次移植里被冻结的文件(不许改),它既没有给 <application>
+     也没有给 <activity> 声明 android:theme,所以 Activity 会拿到系统默认(带 ActionBar 的
+     浅色)主题,与下面的黑金卡片冲突。MainActivity.onCreate 里在 setContentView 之前
+     调 setTheme(R.style.AppTheme) 把它换掉 —— 窗口 decor 是在 setContentView 时才安装的,
+     所以这个时机足够早,NoActionBar 与 windowBackground 都能生效。
+
+     父主题用框架自带的 Theme.Material.NoActionBar(不用 AppCompat:本项目没有该依赖)。
+     另外 MainActivity 还是会给根布局显式设背景、给每个 TextView 显式设颜色,
+     这样即使哪天主题没套上,页面也只是多一条 ActionBar,不会变成白底白字读不了。 -->
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/bg_void</item>
+        <item name="android:navigationBarColor">@color/bg_void</item>
+        <item name="android:windowBackground">@color/bg_void</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+    </style>
+</resources>

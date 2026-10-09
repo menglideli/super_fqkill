@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 黑金配色。移植自 squemaFQH 的 res/values/colors.xml(GPL-3.0,与本项目同许可),
+     只保留实际用到的条目:它的 colorPrimary/colorPrimaryDark/colorAccent 是给 AppCompat
+     主题属性用的,本项目不用 AppCompat(build.gradle.kts 里没有该依赖),所以不收。 -->
+<resources>
+    <!-- 只收实际被引用的颜色(release 开了 shrinkResources,留着不用也只是被裁掉)。
+         上游调色板里的 bg_deep / gold_primary / gold_deep 没有用到:卡片与胶囊的
+         drawable 沿用了 squemaFQH 的写法,直接把带 alpha 的十六进制写在 shape 里
+         (如 #40C9A84B),没有走 @color 间接层。 -->
+    <color name="bg_void">#0A0A0A</color>
+
+    <color name="gold_bright">#E8D5A3</color>
+
+    <color name="text_primary">#F2EDE4</color>
+    <color name="text_secondary">#A89F8E</color>
+    <color name="text_gold">#D4B86A</color>
+    <color name="text_muted">#6E675A</color>
+
+    <!-- 激励入口失效这条告知是「设计如此但用户会以为是坏了」,所以用暖色边框突出,
+         不藏在折叠区里。见 strings.xml 的 reward_notice_body 与 MainActivity 的注释。 -->
+    <color name="notice_stroke">#80D4B86A</color>
+    <color name="notice_fill">#1FC9A84B</color>
+</resources>
