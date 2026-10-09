@@ -114,26 +114,51 @@ adb shell su -c 'cat /data/data/com.phoenix.read/cache/superfqkill.log'
 
 **这一行里有每条 hook 的 `hits` 计数**,是在没有 UI 详情页的情况下唯一的逐条命中数据。
 
-### 3.4 装机 Toast(可见确认)
+### 3.4 装机 Toast(可见确认,文案可自定义)
 
-hook 装完后约 4 秒,宿主界面上会弹一条:
+hook 装完后约 4 秒,宿主界面上弹一条 Toast。默认文案是 `hook成功`。
 
-```
-番茄红果增强:番茄 hook 完成(installed=36 skipped=1)
-```
-
-对应日志:
+对应日志打印的是**渲染后的实际文案**,所以能直接确认模板生效:
 
 ```
-[INFO] hook toast shown: 番茄红果增强:番茄 hook 完成(installed=36 skipped=1) [via=packageReady]
+[INFO] hook toast shown: hook成功 [via=packageReady]
 ```
 
-**开关与延迟**都在 `ModuleEntry.kt` 的 companion object 里,改一个常量重新构建即可:
+**四个常量**都在 `ModuleEntry.kt` 的 companion object 里,改完重新构建即可:
 
 | 常量 | 默认 | 说明 |
 |---|---|---|
 | `SHOW_HOOK_TOAST` | `true` | 关掉整条 Toast |
+| `TOAST_TEMPLATE` | `"hook成功"` | **文案模板,支持占位符** |
 | `TOAST_DELAY_MS` | `4000` | 延迟毫秒数 |
+| `TOAST_DURATION` | `Toast.LENGTH_LONG` | 时长,可改 `LENGTH_SHORT` |
+
+**可用占位符**(大小写敏感;未知占位符原样保留,不会让 Toast 消失):
+
+| 占位符 | 展开为 | 例 |
+|---|---|---|
+| `{app}` | 宿主简称 | `番茄` / `红果` |
+| `{pkg}` | 宿主包名 | `com.dragon.read` |
+| `{installed}` | 装上的条数 | `36` |
+| `{skipped}` | 跳过的条数(含预期缺失) | `1` |
+| `{lost}` | 真·丢失的条数 | `0` |
+| `{lostIds}` | 真·丢失的 id 列表 | `reader-video-ad` |
+| `{counts}` | `installed=N skipped=M` | `installed=36 skipped=1` |
+| `{via}` | 触发路径 | `packageReady` / `hotReload` |
+
+**现成写法(8 种全部实跑验证过渲染结果):**
+
+```kotlin
+const val TOAST_TEMPLATE: String = "hook成功"                             // ← 当前默认
+const val TOAST_TEMPLATE: String = "{app} hook成功"                        // 番茄 hook成功
+const val TOAST_TEMPLATE: String = "hook成功 {counts}"                     // hook成功 installed=36 skipped=1
+const val TOAST_TEMPLATE: String = "hook成功 丢失{lost}条"                  // hook成功 丢失0条   ★推荐
+const val TOAST_TEMPLATE: String = "番茄红果增强:{app} hook 完成({counts})"  // 最早那版
+const val TOAST_TEMPLATE: String = "{app} 已启用"                          // 番茄 已启用
+const val TOAST_TEMPLATE: String = "{app} {installed}/{skipped} via={via} lost=[{lostIds}]"
+```
+
+> ★ **`"hook成功 丢失{lost}条"` 是信息量最大的一版。** 正常显示 `丢失0条`;一旦宿主升级把某条 hook 的目标挪走,你会**当场在屏幕上看到** `丢失3条`,不必接 adb 翻日志。这类模块最麻烦的性质就是随宿主升级**静默**失效(见 §6.3),把 `{lost}` 放进 Toast 等于给自己装了个报警器。
 
 **为什么必须延迟:** `onPackageReady` 时宿主的 Application **还没创建** —— 上游实测过 `ActivityThread.currentApplication()` 在那个阶段返回 null(这正是 `ApkVersion` 那个手写 AXML 解析器存在的原因)。没有 Context 就没有 Toast,所以 post 到主线程并延迟,等宿主 UI 起来再取。
 

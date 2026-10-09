@@ -1,0 +1,79 @@
+# 第三方归属与许可证声明
+
+本项目(**番茄 红果 增强** / `dev.superfqkill`)整体以 **GNU GPL v3.0** 发布,全文见 `LICENSE`。
+
+## 为什么是 GPL-3.0
+
+本项目不是原创起点,而是两个上游模块的融合,其中一个 copyleft:
+
+| 上游 | 许可证 | 本项目的用法 |
+|---|---|---|
+| [FanqieHook](https://github.com/afwfv/FanqieHook) © 2026 afwfv | **MIT** | 作为基座。`core/HookManager`、`core/ClassResolver`、`core/ModuleLog`、`core/ApkVersion`、`packs/AdPack`(33 条广告 hook)全部源自它 |
+| [squemaFQH](https://github.com/Squemadylan/squemaFQH) © Squema | **GPL-3.0** | `packs/PurifyPack` 的 ③④⑤⑤b⑥ 五条界面净化 hook 的逻辑移植自其 `HookInit.java`;`ui/` 的状态卡片思路参考其 `MainActivity` / `ScopeStatus` |
+
+MIT → GPL-3.0 是**单向兼容**的:MIT 代码可以并入 GPL 项目,反之不行。因此一旦引入 squemaFQH 的 GPL 代码,**整个衍生作品就必须以 GPL-3.0 发布**,没有选择余地。
+
+想保持 MIT 或闭源发行,唯一的路是**重写而非复制** squemaFQH 的那部分逻辑。
+
+**明确排除的部分:** squemaFQH 的 ② 会员解锁(`HookInit.java:225-255`,篡改 `com.dragon.read.user.model.VipInfoModel` 构造器实参以伪造会员态)**没有被移植**,本项目不包含任何会员/权益伪造逻辑。理由见 `PLAN.md` §0.1。
+
+## 运行时依赖
+
+| 依赖 | 许可证 | 引入方式 | 说明 |
+|---|---|---|---|
+| [`org.luckypray:dexkit`](https://github.com/LuckyPray/DexKit) | **LGPL-3.0** | `implementation`(打进 APK) | 运行时在混淆 dex 中按语义签名定位目标方法 |
+| [`io.github.libxposed:api`](https://github.com/libxposed/api) | Apache-2.0 | `compileOnly`(**不**打进 APK) | 由宿主框架在运行时提供 |
+| [`io.github.libxposed:service`](https://github.com/libxposed/service) | Apache-2.0 | `implementation`(打进 APK) | 模块 App 侧检测作用域与运行状态 |
+| `androidx.annotation:annotation` | Apache-2.0 | `implementation` | `libxposed:service` 的传递依赖 |
+| Kotlin standard library | Apache-2.0 | `implementation` | 由 AGP 9 的内置 Kotlin 支持引入 |
+
+Apache-2.0 → GPL-3.0 单向兼容,无冲突。
+
+## ★ 关于 DexKit 的 LGPL-3.0(需要特别说明)
+
+LGPL-3.0 要求**接收者能够替换或重新链接**该库。但 DexKit 在本项目中必须是 `implementation`
+(即 `libdexkit.so` 被静态打进 APK),而**不能**是 `compileOnly` —— 后者会导致 APK 里没有
+`libdexkit.so`,运行时直接 `UnsatisfiedLinkError: Could not load libdexkit.so`。
+上游 squemaFQH 的 `AGENTS.md:100` 也把这一点写成硬性规定("绝不能改成 `compileOnly`")。
+
+**这恰好堵死了让 LGPL 姿态变干净的那唯一一种配置。**
+
+在 GPL-3.0 的 APK 内嵌一个不可替换的 LGPL-3.0 native 库,是 Android 生态的常见灰区。
+**LGPL-3.0 §3 明确允许按 GPL-3.0 条款分发该库**,本项目据此作出如下选择并在此记录:
+
+> 依据 GNU LGPL v3.0 第 3 条,本项目中的 DexKit(`org.luckypray:dexkit`,含
+> `libdexkit.so`)按 **GNU GPL v3.0** 的条款一并分发。
+
+两个上游仓库都**没有**任何地方记录这个选择(它们只标注了 "许可证 LGPL-3.0"),也没有
+NOTICE 或第三方归属文件 —— 这是本项目主动补齐的合规缺口。
+
+### 对应源码与重新链接
+
+GPL-3.0 要求提供完整对应源码。本项目的完整源码即本仓库本身(构建脚本、Kotlin 源码、
+资源、ProGuard 规则全部在内),从源码构建的命令:
+
+```bash
+export ANDROID_HOME="<你的 Android SDK 路径>"
+./gradlew assembleRelease
+```
+
+若你希望替换 DexKit 版本并重新链接,只需修改 `app/build.gradle.kts` 中的
+`implementation("org.luckypray:dexkit:<版本>")` 后重新构建 —— 本项目未对 DexKit 做任何
+修改或静态链接层面的定制。
+
+## 图标
+
+`app/src/main/res/drawable/ic_launcher.xml` 为本项目自绘的矢量图,**未**复用任何上游的
+二进制图标资源(squemaFQH 的 `ic_launcher.png` 是 GPL 资源,虽然本项目同为 GPL-3.0 可以用,
+但二进制资源无法审阅来源,自绘更干净)。
+
+## 免责
+
+仅供学习与研究 Android Hook 技术使用。绕过广告可能违反番茄小说 / 红果免费短剧的
+《用户协议》,安装使用前请自行评估风险,**尤其是账号风险**。
+
+本模块不触碰任何会员/权益数据,不伪造服务端校验的值,不介入发奖链路。
+激励类入口(看视频得金币 / 看广告免广告 / 看视频催更 / 听书激励 / 看视频解锁章节)
+会因零广告模式而失效 —— 这是设计使然,且发奖由服务端校验,本地拦截广告不会让金币或权益白得。
+
+使用本模块产生的任何后果由使用者自行承担。

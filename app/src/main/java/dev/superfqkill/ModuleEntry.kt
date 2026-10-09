@@ -8,6 +8,7 @@ import android.widget.Toast
 import dev.superfqkill.core.ApkVersion
 import dev.superfqkill.core.ClassResolver
 import dev.superfqkill.core.HookManager
+import dev.superfqkill.core.InstallSummary
 import dev.superfqkill.core.ModuleLog
 import dev.superfqkill.core.STATUS_FILE_NAME
 import dev.superfqkill.packs.AUDITED_VERSION_CODES
@@ -259,7 +260,7 @@ class ModuleEntry : XposedModule {
 
             // 装机时的可见确认。Toast 是这个 IPC 缺口的临时替代:与其去模块 App 里翻状态卡,
             // 不如直接在宿主里看到一行结果。详见 showHookToast 的注释(含为什么必须延迟)。
-            showHookToast(target, summaryLine, via)
+            showHookToast(target, hooks.installSummary, via)
         }
     }
 
@@ -286,7 +287,7 @@ class ModuleEntry : XposedModule {
      *    而它仓库唯一的 commit `3f8e69a` 就把所有 Toast 删了 —— 那条文档成了 17 处失实之一。
      *    我们把它加回来,但措辞上只声称"装完了",不声称"生效了"。
      */
-    private fun showHookToast(target: InstallTarget, summaryLine: String, via: String) {
+    private fun showHookToast(target: InstallTarget, summary: InstallSummary, via: String) {
         if (!SHOW_HOOK_TOAST) return
         try {
             Handler(Looper.getMainLooper()).postDelayed({
@@ -302,15 +303,9 @@ class ModuleEntry : XposedModule {
                     )
                     return@postDelayed
                 }
-                // summaryLine 形如 "hooks installed=36 skipped=1 known-missing=[…]",
-                // 太长会被 Toast 截断,所以只取前两个计数,完整内容看日志。
-                val counts = summaryLine.substringAfter("hooks ", summaryLine)
-                    .substringBefore(" lost=").substringBefore(" known-missing=")
-                    .substringBefore(" failed=").substringBefore(" hook-failed=")
-                val name = if (target.packageName == PKG_HONGGUO) "红果" else "番茄"
-                val text = "番茄红果增强:$name hook 完成($counts)"
+                val text = renderToastText(target, summary, via)
                 runCatching {
-                    Toast.makeText(ctx.applicationContext, text, Toast.LENGTH_LONG).show()
+                    Toast.makeText(ctx.applicationContext, text, TOAST_DURATION).show()
                     log.info("hook toast shown: $text [via=$via]")
                 }.onFailure {
                     log.warn("hook toast 显示失败(${it.javaClass.simpleName}: ${it.message})")
@@ -320,6 +315,41 @@ class ModuleEntry : XposedModule {
             // Toast 纯属附加体验,任何失败都不能影响 hook 安装。
             log.warn("hook toast 调度失败(${t.javaClass.simpleName}: ${t.message})")
         }
+    }
+
+    /**
+     * 按 [TOAST_TEMPLATE] 渲染文案。支持的占位符(大小写敏感,原样替换):
+     *
+     * | 占位符 | 展开为 | 例 |
+     * |---|---|---|
+     * | `{app}` | 宿主简称 | `番茄` / `红果` |
+     * | `{pkg}` | 宿主包名 | `com.dragon.read` |
+     * | `{installed}` | 装上的条数 | `36` |
+     * | `{skipped}` | 跳过的条数(含预期缺失) | `1` |
+     * | `{lost}` | 真·丢失的条数 | `0` |
+     * | `{lostIds}` | 真·丢失的 id 列表,逗号分隔 | `reader-video-ad` |
+     * | `{counts}` | `installed=N skipped=M` | `installed=36 skipped=1` |
+     * | `{via}` | 触发路径 | `packageReady` / `hotReload` |
+     *
+     * 未知占位符原样保留,不抛异常 —— 写错一个字母不该让装机提示整个消失。
+     * 完整摘要(含 known-missing / failed / hook-failed 与逐条 hits)始终在日志里,
+     * Toast 只是给你一眼确认用的。
+     */
+    private fun renderToastText(target: InstallTarget, summary: InstallSummary, via: String): String {
+        val app = if (target.packageName == PKG_HONGGUO) "红果" else "番茄"
+        val values = mapOf(
+            "{app}" to app,
+            "{pkg}" to target.packageName,
+            "{installed}" to summary.installed.toString(),
+            "{skipped}" to summary.skipped.toString(),
+            "{lost}" to summary.lost.size.toString(),
+            "{lostIds}" to summary.lost.joinToString(", "),
+            "{counts}" to "installed=${summary.installed} skipped=${summary.skipped}",
+            "{via}" to via
+        )
+        var out = TOAST_TEMPLATE
+        for ((k, v) in values) out = out.replace(k, v)
+        return out
     }
 
     /** 各宿主上合法缺失的 hook id。与 AdPack 里的 per-hook knownMissingOnMiss 保持一致。 */
@@ -511,6 +541,28 @@ class ModuleEntry : XposedModule {
          * 后者只有 `hook hit[...]` 日志能证明(DEVICE-TEST.md §6.5)。
          */
         const val SHOW_HOOK_TOAST: Boolean = true
+
+        /**
+         * Toast 文案模板。**改这一个常量就能完全自定义**,占位符清单见 [renderToastText]。
+         *
+         * 几个现成的写法,直接替换即可:
+         * ```
+         * "hook成功"                              ← 当前默认
+         * "{app} hook成功"                         → 番茄 hook成功 / 红果 hook成功
+         * "hook成功 {counts}"                     → hook成功 installed=36 skipped=1
+         * "番茄红果增强:{app} hook 完成({counts})"  ← 之前那版
+         * "{app} 已启用"                           → 番茄 已启用
+         * ```
+         *
+         * ⚠️ 无论写成什么,它都只表示"安装流程跑完了",**不表示 hook 真的在调用链上**。
+         * 后者只有日志里的 `hook hit[...]` 能证明(DEVICE-TEST.md §6.5)。
+         * 若想让它带上"有没有丢东西"的信息,用 `{lost}`:`"hook成功 丢失{lost}条"`,
+         * 正常情况应显示 `丢失0条`。
+         */
+        const val TOAST_TEMPLATE: String = "hook成功"
+
+        /** Toast 时长:`Toast.LENGTH_SHORT`(0)或 `Toast.LENGTH_LONG`(1)。 */
+        const val TOAST_DURATION: Int = Toast.LENGTH_LONG
 
         /**
          * Toast 的延迟(毫秒)。必须等宿主的 Application 与 UI 起来之后才能取到 Context,
