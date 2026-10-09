@@ -24,6 +24,27 @@ android {
         }
     }
 
+    // ★ 必须声明在 buildTypes **之前**。
+    // Kotlin DSL 的 android{} 块是自上而下立即执行的:buildTypes.release 里那句
+    // signingConfigs.getByName("ci") 在它自己那一步就会被求值,若此时 "ci" 还没被 create,
+    // 会抛 UnknownDomainObjectException: SigningConfig with name 'ci' not found。
+    // 上游 FanqieHook 就是这个顺序;之前把两块调换了,只有配了 KEYSTORE_PATH 才会触发,
+    // 所以本地无 secret 时看不出来。
+    signingConfigs {
+        // CI 固定签名:由 workflow 从 secrets 注入。稳定签名是必需的 —— Xposed 模块靠
+        // adb install -r 覆盖升级,签名不一致会直接失败。(squemaFQH 完全没有 signingConfigs,
+        // release 产出未签名 APK。)未配 KEYSTORE_PATH 时本地开发回退 debug 签名。
+        create("ci") {
+            val path = System.getenv("KEYSTORE_PATH")
+            if (path != null) {
+                storeFile = file(path)
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "android"
+                keyAlias = System.getenv("KEYSTORE_ALIAS") ?: "androiddebugkey"
+                keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD") ?: "android"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // debug/androidTest 必须额外带 x86_64:CI 的 resolver-test job 跑在 x86_64 模拟器上
@@ -50,21 +71,6 @@ android {
                 signingConfigs.getByName("ci")
             } else {
                 signingConfigs.getByName("debug")
-            }
-        }
-    }
-
-    signingConfigs {
-        // CI 固定签名:由 workflow 从 secrets 注入。稳定签名是必需的 —— Xposed 模块靠
-        // adb install -r 覆盖升级,签名不一致会直接失败。(squemaFQH 完全没有 signingConfigs,
-        // release 产出未签名 APK。)未配 KEYSTORE_PATH 时本地开发回退 debug 签名。
-        create("ci") {
-            val path = System.getenv("KEYSTORE_PATH")
-            if (path != null) {
-                storeFile = file(path)
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "android"
-                keyAlias = System.getenv("KEYSTORE_ALIAS") ?: "androiddebugkey"
-                keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD") ?: "android"
             }
         }
     }
