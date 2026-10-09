@@ -42,3 +42,8 @@ scopes*.txt
 # Frida verification scripts (internal, not published)
 frida_verify.js
 frida_min.js
+
+# 上游仓库的只读调研快照(两个都是完整 git clone)。
+# 必须忽略:`git add -A` 会把嵌套 git 仓库当 mode 160000 的 gitlink 收进索引,
+# 远端会产生 large file 警告,而且 clone 下来的历史与本项目无关(squemaFQH 陷阱 #7)。
+research/

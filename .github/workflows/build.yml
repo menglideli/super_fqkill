@@ -32,6 +32,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # 恢复可执行位。**这一步是必需的,不是保险**。
+      # 开发机是 Windows 且 core.fileMode=false,git 不跟踪文件系统模式,所以从 Windows
+      # 提交的 shell 脚本一律记成 100644;Linux runner checkout 出来没有 x 位,
+      # `./gradlew` 直接 Permission denied(exit 126)。
+      # 仓库里已用 `git update-index --chmod=+x` 把模式修成 100755,但只要还有人从
+      # Windows 重新 add 这些文件就会退回 100644 —— 所以这里再兜一层。
+      - name: Make scripts executable
+        run: chmod +x ./gradlew ./scripts/*.sh
+
       # 供应链:校验 gradle-wrapper.jar 的 SHA-256 是否在 Gradle 官方已知良好清单内。
       # 两个上游仓库都直接提交了 wrapper jar,这一步防的是被投毒的 wrapper。
       - name: Validate Gradle wrapper
@@ -139,6 +148,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # 同 build job:Windows + core.fileMode=false 会让 git 把脚本记成 100644,
+      # Linux runner 上 `./gradlew` 就是 Permission denied(exit 126)。
+      - name: Make scripts executable
+        run: chmod +x ./gradlew ./scripts/*.sh
 
       - uses: actions/setup-java@v6
         with:
