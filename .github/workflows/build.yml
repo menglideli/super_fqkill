@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      run_emulator:
+        description: '同时跑模拟器 job(见 resolver-test 的说明:目前会失败)'
+        type: boolean
+        default: false
 
 # 同一分支的旧运行直接取消,省 Actions 分钟数
 concurrency:
@@ -141,8 +146,23 @@ jobs:
     name: Resolver tests on emulator
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # 模拟器很贵也很脆,先只在 main 和手动触发时跑;PR 阶段注释掉下面这行即可全跑
-    if: github.event_name != 'pull_request'
+    # ★ 默认**不跑**,只在手动触发且勾选 run_emulator 时才跑。两个现实阻碍:
+    #
+    # 1. **app/src/androidTest 目前是空的** —— 一个 instrumented 测试都还没写。
+    #    CI-PLAN.md §4 Tier 3 设计了这一层(用 fixture dex 真跑 ClassResolver 的语义查找,
+    #    验证"版本漂移后仍能命中"),但实现还没做。现在跑就是空转 + 失败。
+    #
+    # 2. **GitHub-hosted runner 磁盘不够起模拟器**(2026-10-09 实测):
+    #      FATAL | Not enough space to create userdata partition.
+    #              Available: 7164.38 MB at /home/runner/.android/avd/test.avd,
+    #              need 7372.80 MB
+    #    差约 200 MB。可行解:给 emulator-options 加 `-partition-size 2048`(缩小 userdata),
+    #    或在 runner 上先清理磁盘。启用前必须先解决这一条。
+    #
+    # 实机验证替代了这一层的**大部分**价值(见 DEVICE-TEST.md):Tier 3 只能验证
+    # resolver 的查找逻辑,而实机能验证 hook 是否真的在调用链上 —— 后者才是这类模块
+    # 最致命的失败模式("静态看着对、实机不在链路上")。
+    if: github.event_name == 'workflow_dispatch' && inputs.run_emulator == true
 
     strategy:
       fail-fast: false

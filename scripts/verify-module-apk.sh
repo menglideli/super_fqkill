@@ -263,8 +263,23 @@ if [ "$HAVE_APKANALYZER" = 1 ]; then
       # 粗略检查:每个 provider 块里 exported="true" 却没有 android:permission
       "$PYTHON" - "$TMP/manifest.xml" > "$TMP/prov.txt" <<'PY'
 import re, sys
+
+# 白名单:由依赖 AAR 通过 manifest 合并带进来、且**必须**导出的框架组件。
+#
+# io.github.libxposed.service.XposedProvider 来自 io.github.libxposed:service 自己的
+# AndroidManifest.xml —— 已核验其原文:
+#   <provider android:name="io.github.libxposed.service.XposedProvider"
+#             android:authorities="${applicationId}.XposedService"
+#             android:exported="true"
+#             tools:ignore="ExportedContentProvider" />
+# 它是框架向模块 App 投递 XposedService binder 的通道,XposedServiceHelper 靠它拿到
+# service;不导出模块就取不到 scope/runningTargets,状态面板会全灭。
+# 这不是我们的组件(我们自己的 manifest 里 provider 数为 0),也不该由我们加权限保护,
+# 上游还专门写了 tools:ignore 说明这是有意为之。
+ALLOWLIST = {'io.github.libxposed.service.XposedProvider'}
+
 x = open(sys.argv[1], encoding='utf-8', errors='replace').read()
-bad = []
+bad, allowed = [], []
 for m in re.finditer(r'<provider\b.*?(?:/>|</provider>)', x, re.S):
     blk = m.group(0)
     hit = re.search(r'android:name="([^"]+)"', blk)
@@ -272,11 +287,19 @@ for m in re.finditer(r'<provider\b.*?(?:/>|</provider>)', x, re.S):
     exported = 'exported="true"' in blk
     protected = re.search(r'android:(?:permission|readPermission|writePermission)=', blk)
     if exported and not protected:
-        bad.append(name)
-print('\n'.join(bad))
+        (allowed if name in ALLOWLIST else bad).append(name)
+for n in allowed:
+    print('ALLOWED ' + n)
+for n in bad:
+    print('BAD ' + n)
 PY
       if [ -s "$TMP/prov.txt" ]; then
-        while read -r p; do bad "导出 provider 无权限保护: $p —— 加 android:permission 并在 call() 里校验 getCallingPackage()"; done < "$TMP/prov.txt"
+        while read -r kind rest; do
+          case "$kind" in
+            ALLOWED) ok "导出 provider 属框架白名单: $rest(由 libxposed service AAR 合并进来,必须导出)" ;;
+            BAD)     bad "导出 provider 无权限保护: $rest —— 加 android:permission 并在 call() 里校验 getCallingPackage()" ;;
+          esac
+        done < "$TMP/prov.txt"
       else
         ok "无「导出且无权限保护」的 provider"
       fi
